@@ -62,6 +62,7 @@ return [
             'location' => ['name' => 'Location Settings'],
             'graylog' => ['name' => 'Graylog Integration'],
             'oxidized' => ['name' => 'Oxidized Integration'],
+            'mist' => ['name' => 'Mist Cloud Integration'],
             'mac_oui' => ['name' => 'Mac OUI Lookup Integration'],
             'peeringdb' => ['name' => 'PeeringDB Integration'],
             'nfsen' => ['name' => 'NfSen Integration'],
@@ -1134,6 +1135,12 @@ return [
                     'description' => 'Query api field',
                     'help' => 'Changes the default field to query graylog API.',
                 ],
+            ],
+        ],
+        'mist' => [
+            'enabled' => [
+                'description' => 'Enable Mist API integration',
+                'help' => 'Enables polling of Juniper Mist Cloud via the Mist REST API. Per-org details are configured on devices with OS \"mist\".',
             ],
         ],
         'html' => [

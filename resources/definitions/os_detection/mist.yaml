@@ -1,0 +1,11 @@
+os: mist
+text: 'Juniper Mist Cloud'
+type: wireless
+icon: juniper
+over:
+    - { graph: device_wireless_ap-count, text: 'AP Count' }
+    - { graph: device_wireless_clients, text: 'Client Count' }
+# No automatic discovery rules: assign this OS manually to the dummy
+# Mist \"org\" device. All data will be polled via the Mist API.
+discovery: []
+

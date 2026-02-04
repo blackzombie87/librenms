@@ -5811,6 +5811,13 @@
                 "value": "url"
             }
         },
+        "mist.enabled": {
+            "default": false,
+            "group": "external",
+            "section": "mist",
+            "order": 0,
+            "type": "boolean"
+        },
         "radius.default_level": {
             "default": 1,
             "type": "integer"
