@@ -52,7 +52,8 @@ class Mist implements Module
     {
         $device = $os->getDevice();
 
-        if (! $status->isEnabledAndDeviceUp($device)) {
+        // Mist is API-only; don't require SNMP to be enabled
+        if (! $status->isEnabledAndDeviceUp($device, false)) {
             return false;
         }
 
