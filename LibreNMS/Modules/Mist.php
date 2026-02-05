@@ -238,9 +238,10 @@ class Mist implements Module
                 $band24 = $ap['radio_stat']['band_24'] ?? [];
                 $band5 = $ap['radio_stat']['band_5'] ?? [];
 
-                $channel = $band5['channel'] ?? $band24['channel'] ?? null;
-                $power = $band5['power'] ?? $band24['power'] ?? null;
-                $util = $band5['util_all'] ?? $band24['util_all'] ?? null;
+                // Some APs may not report RF details; default to 0 instead of NULL to satisfy DB constraints
+                $channel = (int) ($band5['channel'] ?? $band24['channel'] ?? 0);
+                $power = (int) ($band5['power'] ?? $band24['power'] ?? 0);
+                $util = (int) ($band5['util_all'] ?? $band24['util_all'] ?? 0);
 
                 $apModel = new AccessPoint([
                     'device_id' => $device->device_id,
