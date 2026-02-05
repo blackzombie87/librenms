@@ -1,7 +1,13 @@
 <?php
 
-$rrd_filename = Rrd::name($device['hostname'], ['arubaap', $ap['name'] . $ap['radio_number']]);
+require 'includes/html/graphs/accesspoints/common.inc.php';
 
+if ($is_mist_ap) {
+    graph_error('Channel not recorded for Mist APs', 'No Data');
+    exit;
+}
+
+$rrd_filename = $ap_rrd_filename;
 $rrd_list[0]['filename'] = $rrd_filename;
 $rrd_list[0]['descr'] = 'Channel';
 $rrd_list[0]['ds'] = 'channel';
