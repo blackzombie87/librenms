@@ -60,6 +60,9 @@ class DeviceDiscover extends LnmsCommand
         try {
             $this->handleDebug();
 
+            // Run global discovery modules (like Mist) before processing devices
+            $this->runGlobalDiscovery();
+
             $processor = new PerDeviceProcess(
                 $this->processType,
                 $this->argument('device spec'),
@@ -78,6 +81,17 @@ class DeviceDiscover extends LnmsCommand
             return $processor->processResults($measurements, $this->getOutput());
         } catch (QueryException $e) {
             return $this->handleQueryException($e);
+        }
+    }
+
+    /**
+     * Run global discovery modules that don't require a device context
+     */
+    private function runGlobalDiscovery(): void
+    {
+        $mistDiscoveryFile = base_path('includes/discovery/mist.inc.php');
+        if (file_exists($mistDiscoveryFile)) {
+            include $mistDiscoveryFile;
         }
     }
 }
