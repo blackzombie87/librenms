@@ -1741,6 +1741,9 @@ return [
             'ports' => [
                 'description' => 'Ports',
             ],
+            'mist' => [
+                'description' => 'Juniper Mist Cloud',
+            ],
             'bgp-peers' => [
                 'description' => 'BGP Peers',
             ],

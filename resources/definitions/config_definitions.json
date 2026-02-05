@@ -6253,6 +6253,13 @@
             "default": false,
             "type": "boolean"
         },
+        "poller_modules.mist": {
+            "order": 21,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
         "poller_modules.entity-physical": {
             "order": 170,
             "group": "poller",
