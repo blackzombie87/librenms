@@ -44,7 +44,7 @@ class MistApi
 
             $this->client = Http::client()
                 ->baseUrl($baseUrl)
-                ->withToken($token)
+                ->withToken($token, 'Token')
                 ->acceptJson()
                 ->timeout(30);
         }
