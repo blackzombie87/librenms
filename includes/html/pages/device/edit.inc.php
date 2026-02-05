@@ -37,10 +37,6 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     $panes['ipmi'] = 'IPMI';
 
-    if ($device['os'] == 'mist') {
-        $panes['mist'] = 'Mist';
-    }
-
     if (dbFetchCell("SELECT COUNT(*) FROM `sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['health'] = 'Health';
     }

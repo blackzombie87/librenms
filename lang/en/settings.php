@@ -1744,6 +1744,9 @@ return [
             'mist' => [
                 'description' => 'Juniper Mist Cloud',
             ],
+            'mist-ap' => [
+                'description' => 'Juniper Mist Access Points',
+            ],
             'bgp-peers' => [
                 'description' => 'BGP Peers',
             ],

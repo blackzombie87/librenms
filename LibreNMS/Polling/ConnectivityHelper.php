@@ -38,8 +38,14 @@ class ConnectivityHelper
 
     public static function pingIsAllowed(Device $device): bool
     {
-        // Juniper Mist Cloud devices are API-only; no ICMP
-        if ($device->os === 'mist') {
+        // Juniper Mist org devices are API-only; no ICMP
+        // Mist AP devices can be pinged if they have an IP
+        if ($device->os === 'mist-org') {
+            return false;
+        }
+
+        // Mist AP devices: ping if they have an IP, otherwise skip
+        if ($device->os === 'mist-ap' && empty($device->ip)) {
             return false;
         }
 

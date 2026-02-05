@@ -1,11 +1,10 @@
 <?php
 
-require 'includes/html/graphs/accesspoints/common.inc.php';
+$rrd_filename = Rrd::name($device['hostname'], ['arubaap', $ap['name'] . $ap['radio_number']]);
 
-$rrd_filename = $ap_rrd_filename;
 $rrd_list[0]['filename'] = $rrd_filename;
-$rrd_list[0]['descr'] = $is_mist_ap ? 'Clients' : 'Num Clients';
-$rrd_list[0]['ds'] = $is_mist_ap ? 'clients' : 'numasoclients';
+$rrd_list[0]['descr'] = 'Num Clients';
+$rrd_list[0]['ds'] = 'numasoclients';
 
 $unit_text = 'Clients';
 

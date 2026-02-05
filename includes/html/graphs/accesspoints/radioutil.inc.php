@@ -1,20 +1,10 @@
 <?php
 
-require 'includes/html/graphs/accesspoints/common.inc.php';
+$rrd_filename = Rrd::name($device['hostname'], ['arubaap', $ap['name'] . $ap['radio_number']]);
 
-$rrd_filename = $ap_rrd_filename;
-if ($is_mist_ap) {
-    $rrd_list[0]['filename'] = $rrd_filename;
-    $rrd_list[0]['descr'] = '2.4 GHz';
-    $rrd_list[0]['ds'] = 'band24_util';
-    $rrd_list[1]['filename'] = $rrd_filename;
-    $rrd_list[1]['descr'] = '5 GHz';
-    $rrd_list[1]['ds'] = 'band5_util';
-} else {
-    $rrd_list[0]['filename'] = $rrd_filename;
-    $rrd_list[0]['descr'] = 'radioutil';
-    $rrd_list[0]['ds'] = 'radioutil';
-}
+$rrd_list[0]['filename'] = $rrd_filename;
+$rrd_list[0]['descr'] = 'radioutil';
+$rrd_list[0]['ds'] = 'radioutil';
 
 $unit_text = 'Percent';
 

@@ -1,0 +1,11 @@
+os: mist-ap
+text: 'Juniper Mist Access Point'
+type: wireless
+icon: juniper
+over:
+    - { graph: device_bits, text: 'Device Traffic' }
+    - { graph: device_wireless_clients, text: 'Client Count' }
+    - { graph: device_wireless_utilization, text: 'Radio Utilization' }
+# Mist AP devices are discovered via the Mist API discovery module.
+# They use the AP's internal IP for ping checks if available.
+discovery: []

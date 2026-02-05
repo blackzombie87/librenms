@@ -6260,6 +6260,13 @@
             "default": false,
             "type": "boolean"
         },
+        "poller_modules.mist-ap": {
+            "order": 22,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": true,
+            "type": "boolean"
+        },
         "poller_modules.entity-physical": {
             "order": 170,
             "group": "poller",

@@ -1,0 +1,7 @@
+os: mist-org
+text: 'Juniper Mist Organization'
+type: wireless
+icon: juniper
+# Mist org devices are dummy devices representing a Mist organization.
+# They are always up (no ICMP/SNMP), and are used to organize APs.
+discovery: []

@@ -202,6 +202,7 @@ Route::middleware(['auth'])->group(function (): void {
         Route::post('plugin/settings/{plugin:plugin_name}', [PluginSettingsController::class, 'update'])->name('plugin.update');
 
         Route::resource('port-groups', PortGroupController::class);
+        Route::resource('mist-orgs', \App\Http\Controllers\MistOrgController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results/{group?}', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
