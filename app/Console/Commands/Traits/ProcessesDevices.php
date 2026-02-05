@@ -5,7 +5,9 @@ namespace App\Console\Commands\Traits;
 use App\Facades\LibrenmsConfig;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\Debug;
 use LibreNMS\Util\Version;
+use Symfony\Component\Console\Output\OutputInterface;
 
 trait ProcessesDevices
 {
@@ -14,6 +16,13 @@ trait ProcessesDevices
         if ($this->getOutput()->isVerbose()) {
             Log::debug(Version::get()->header());
             LibrenmsConfig::invalidateAndReload();
+        }
+
+        // Enable Debug and verbose so modules can log to terminal with -vv / -vvv
+        $verbosity = $this->getOutput()->getVerbosity();
+        if ($verbosity >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
+            Debug::set(true);
+            Debug::setVerbose(true);
         }
     }
 

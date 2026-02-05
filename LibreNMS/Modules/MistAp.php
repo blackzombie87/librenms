@@ -16,6 +16,7 @@ use LibreNMS\Interfaces\Module;
 use LibreNMS\OS;
 use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\RRD\RrdDefinition;
+use LibreNMS\Util\Debug;
 
 /**
  * MistAp Module
@@ -87,6 +88,11 @@ class MistAp implements Module
 
             $statsResp = $api->get("/api/v1/sites/$siteId/stats/devices/$mistDeviceId")->throw();
             $apStats = $statsResp->json();
+
+            if (Debug::isVerbose()) {
+                Log::channel('stdout')->debug('[MistAp] AP device data: ' . json_encode($apData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                Log::channel('stdout')->debug('[MistAp] AP stats: ' . json_encode($apStats, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            }
 
             // Update device basic info
             $device->hardware = $apData['model'] ?? $device->hardware;
