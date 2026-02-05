@@ -38,6 +38,11 @@ class ConnectivityHelper
 
     public static function pingIsAllowed(Device $device): bool
     {
+        // Juniper Mist Cloud devices are API-only; no ICMP
+        if ($device->os === 'mist') {
+            return false;
+        }
+
         return LibrenmsConfig::get('icmp_check') && ! ($device->exists && $device->getAttrib('override_icmp_disable') === 'true');
     }
 }

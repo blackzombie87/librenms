@@ -21,8 +21,13 @@ class CheckDeviceAvailability
         $ping_response = $this->deviceIsPingable->execute($device);
 
         if ($ping_response->success()) {
-            $is_up_snmp = ! ConnectivityHelper::snmpIsAllowed($device) || $this->deviceIsSnmpable->execute($device);
-            $this->setDeviceAvailability->execute($device, $is_up_snmp, AvailabilitySource::SNMP, $commit);
+            // Juniper Mist Cloud devices are API-only; consider them up without ICMP/SNMP
+            if ($device->os === 'mist') {
+                $this->setDeviceAvailability->execute($device, true, AvailabilitySource::NONE, $commit);
+            } else {
+                $is_up_snmp = ! ConnectivityHelper::snmpIsAllowed($device) || $this->deviceIsSnmpable->execute($device);
+                $this->setDeviceAvailability->execute($device, $is_up_snmp, AvailabilitySource::SNMP, $commit);
+            }
 
             $device->mtu_status = $this->deviceMtuTest->execute($device);
         } else { // icmp down
