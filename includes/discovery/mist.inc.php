@@ -113,7 +113,8 @@ foreach ($mistOrgs as $mistOrg) {
                 }
 
                 $mac = strtolower((string) ($apData['mac'] ?? ''));
-                if ($mac === '') {
+                $mistDeviceId = (string) ($apData['id'] ?? '');
+                if ($mac === '' || $mistDeviceId === '') {
                     continue;
                 }
 
@@ -121,14 +122,17 @@ foreach ($mistOrgs as $mistOrg) {
                 $apIp = $apData['ip'] ?? null;
                 $apHostname = $apIp ?: ('mist-ap-' . str_replace(':', '-', $mac));
 
-                // Check if AP device already exists
+                // Check if AP device already exists (by Mist internal ID or MAC)
                 $apDevice = Device::where('os', 'mist-ap')
-                    ->where(function ($query) use ($mac, $apHostname, $apIp) {
+                    ->where(function ($query) use ($mac, $apHostname, $apIp, $mistDeviceId) {
                         $query->where('sysObjectID', $mac)
                             ->orWhere('hostname', $apHostname);
                         if ($apIp) {
                             $query->orWhere('ip', inet_pton($apIp));
                         }
+                        $query->orWhereHas('attribs', function ($q) use ($mistDeviceId) {
+                            $q->where('attrib_type', 'mist.device_id')->where('attrib_value', $mistDeviceId);
+                        });
                     })
                     ->first();
 
@@ -150,9 +154,8 @@ foreach ($mistOrgs as $mistOrg) {
                         $apDevice = \DeviceCache::getPrimary();
                         $apDevice->setAttrib('mist.org_id', $mistOrg->org_id);
                         $apDevice->setAttrib('mist.site_id', $siteId);
+                        $apDevice->setAttrib('mist.device_id', $mistDeviceId);
                         $apDevice->setAttrib('mist.mac', $mac);
-                        $apDevice->setAttrib('mist.api_url', $mistOrg->api_url);
-                        $apDevice->setAttrib('mist.api_key', $mistOrg->api_key);
                         Log::info("Created Mist AP device: {$apDevice->sysName} ({$mac})");
                     }
                 } else {
@@ -163,9 +166,8 @@ foreach ($mistOrgs as $mistOrg) {
                     }
                     $apDevice->setAttrib('mist.org_id', $mistOrg->org_id);
                     $apDevice->setAttrib('mist.site_id', $siteId);
+                    $apDevice->setAttrib('mist.device_id', $mistDeviceId);
                     $apDevice->setAttrib('mist.mac', $mac);
-                    $apDevice->setAttrib('mist.api_url', $mistOrg->api_url);
-                    $apDevice->setAttrib('mist.api_key', $mistOrg->api_key);
                     $apDevice->save();
                 }
             }

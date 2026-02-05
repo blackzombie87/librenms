@@ -72,20 +72,20 @@ class MistAp implements Module
 
         $orgId = $api->getOrgId();
         $siteId = (string) $device->getAttrib('mist.site_id');
-        $mac = (string) $device->getAttrib('mist.mac');
+        $mistDeviceId = (string) $device->getAttrib('mist.device_id');
 
-        if (empty($siteId) || empty($mac)) {
-            Log::warning("MistAp module: missing site_id or mac for device {$device->hostname}");
+        if ($siteId === '' || $mistDeviceId === '') {
+            Log::warning("MistAp module: missing site_id or device_id for device {$device->hostname}");
 
             return;
         }
 
         try {
-            // Fetch AP details and stats
-            $apResp = $api->get("/api/v1/sites/$siteId/devices/$mac")->throw();
+            // Fetch AP details and stats using Mist internal device ID
+            $apResp = $api->get("/api/v1/sites/$siteId/devices/$mistDeviceId")->throw();
             $apData = $apResp->json();
 
-            $statsResp = $api->get("/api/v1/sites/$siteId/stats/devices/$mac")->throw();
+            $statsResp = $api->get("/api/v1/sites/$siteId/stats/devices/$mistDeviceId")->throw();
             $apStats = $statsResp->json();
 
             // Update device basic info
@@ -100,7 +100,7 @@ class MistAp implements Module
             $this->updatePorts($device, $apData, $apStats, $datastore);
 
             // Update wireless sensors
-            $this->updateWirelessSensors($device, $apData, $apStats, $datastore);
+            $this->updateWirelessSensors($os, $device, $apData, $apStats, $datastore);
 
         } catch (\Throwable $e) {
             Log::warning("MistAp module: failed polling device {$device->hostname}: " . $e->getMessage());
@@ -166,7 +166,7 @@ class MistAp implements Module
         }
     }
 
-    private function updateWirelessSensors(Device $device, array $apData, array $apStats, DataStorageInterface $datastore): void
+    private function updateWirelessSensors(OS $os, Device $device, array $apData, array $apStats, DataStorageInterface $datastore): void
     {
         $existingSensors = $device->wirelessSensors()->get()->keyBy(fn ($s) => $s->sensor_class . '_' . $s->sensor_index);
         $sensors = collect();

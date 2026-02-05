@@ -4,6 +4,7 @@ namespace App\ApiClients;
 
 use App\Facades\LibrenmsConfig;
 use App\Models\Device;
+use App\Models\MistOrg;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use LibreNMS\Util\Http;
@@ -12,8 +13,8 @@ use LibreNMS\Util\Http;
  * MistApi
  *
  * Lightweight client wrapper for the Juniper Mist Cloud REST API.
- * Actual endpoint usage will be added later; for now this only
- * encapsulates configuration and basic request helpers.
+ * Resolves API credentials from MistOrg by org_id so the correct token
+ * is used when multiple Mist organizations are configured.
  */
 class MistApi
 {
@@ -29,18 +30,36 @@ class MistApi
             return false;
         }
 
+        $orgId = (string) $this->device->getAttrib('mist.org_id');
+        if ($orgId === '') {
+            return false;
+        }
+
+        $mistOrg = MistOrg::where('org_id', $orgId)->where('enabled', true)->first();
+        if ($mistOrg) {
+            return $mistOrg->api_url !== '' && $mistOrg->api_key !== '';
+        }
+
+        // Fallback: device-level credentials (e.g. legacy or single-org)
         $baseUrl = (string) $this->device->getAttrib('mist.api_url');
         $token = (string) $this->device->getAttrib('mist.api_key');
-        $orgId = (string) $this->device->getAttrib('mist.org_id');
 
-        return $baseUrl !== '' && $token !== '' && $orgId !== '';
+        return $baseUrl !== '' && $token !== '';
     }
 
     public function getClient(): PendingRequest
     {
         if ($this->client === null) {
-            $baseUrl = rtrim((string) $this->device->getAttrib('mist.api_url'), '/');
-            $token = (string) $this->device->getAttrib('mist.api_key');
+            $orgId = (string) $this->device->getAttrib('mist.org_id');
+            $mistOrg = MistOrg::where('org_id', $orgId)->where('enabled', true)->first();
+
+            if ($mistOrg) {
+                $baseUrl = rtrim($mistOrg->api_url, '/');
+                $token = $mistOrg->api_key;
+            } else {
+                $baseUrl = rtrim((string) $this->device->getAttrib('mist.api_url'), '/');
+                $token = (string) $this->device->getAttrib('mist.api_key');
+            }
 
             $this->client = Http::client()
                 ->baseUrl($baseUrl)
