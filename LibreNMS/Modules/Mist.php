@@ -5,6 +5,7 @@ namespace LibreNMS\Modules;
 use App\ApiClients\MistApi;
 use App\Facades\DeviceCache;
 use App\Models\AccessPoint;
+use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Module;
@@ -307,6 +308,40 @@ class Mist implements Module
             'aps' => $totalApCount,
             'clients' => $totalClientCount,
         ]);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function dataExists(Device $device): bool
+    {
+        return $device->accessPoints()->exists();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function cleanup(Device $device): int
+    {
+        return $device->accessPoints()->delete();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function dump(Device $device, string $type): ?array
+    {
+        if ($type === 'poller') {
+            return null;
+        }
+
+        return [
+            'access_points' => $device->accessPoints()
+                ->orderBy('name')
+                ->orderBy('radio_number')
+                ->get()
+                ->map->makeHidden(['device_id', 'accesspoint_id', 'deleted']),
+        ];
     }
 }
 
