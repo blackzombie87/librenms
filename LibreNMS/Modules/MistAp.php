@@ -183,8 +183,8 @@ class MistAp implements Module
         $util5 = (int) ($band5['util_all'] ?? 0);
 
         if ($util24 > 0 || $util5 > 0) {
-            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band24', '2.4 GHz Utilization', $util24, 1, 1, null, null, null, null, null, null, null, null, 0, 100))->toModel());
-            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band5', '5 GHz Utilization', $util5, 1, 1, null, null, null, null, null, null, null, null, 0, 100))->toModel());
+            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band24', '2.4 GHz Utilization', $util24, 1, 1, 'sum', null, 100, 0, null, null, null, null, null, null))->toModel());
+            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band5', '5 GHz Utilization', $util5, 1, 1, 'sum', null, 100, 0, null, null, null, null, null, null))->toModel());
         }
 
         // Sync sensors and update RRD data
