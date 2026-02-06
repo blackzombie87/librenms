@@ -115,12 +115,21 @@ class MistAp implements Module
 
     private function updatePorts(Device $device, array $apData, array $apStats, DataStorageInterface $datastore): void
     {
-        $ethernetInterfaces = $apData['ethernet_interfaces'] ?? [];
-        $portStats = $apStats['ethernet_port_stats'] ?? [];
+        // Mist AP stats commonly provide port stats under port_stat keyed by interface name (ex: eth0)
+        $portStat = $apStats['port_stat'] ?? [];
+        if (! is_array($portStat) || empty($portStat)) {
+            return;
+        }
 
-        foreach ($ethernetInterfaces as $eth) {
-            $ifName = $eth['name'] ?? 'eth' . ($eth['index'] ?? 0);
-            $ifIndex = $eth['index'] ?? 0;
+        $ifIndex = 0;
+        foreach ($portStat as $ifName => $stats) {
+            if (! is_array($stats) || $ifName === '') {
+                continue;
+            }
+
+            $ifOperUp = (bool) ($stats['up'] ?? false);
+            $ifSpeed = (int) ($stats['speed'] ?? 0) * 1_000_000; // Mist reports Mbps, DB expects bps
+            $fullDuplex = (bool) ($stats['full_duplex'] ?? false);
 
             // Find or create port
             $port = Port::firstOrNew([
@@ -128,47 +137,41 @@ class MistAp implements Module
                 'ifIndex' => $ifIndex,
             ], [
                 'ifName' => $ifName,
-                'ifDescr' => $eth['description'] ?? $ifName,
+                'ifDescr' => $ifName,
                 'ifType' => 6, // ethernetCsmacd
-                'ifOperStatus' => ($eth['up'] ?? false) ? 'up' : 'down',
-                'ifAdminStatus' => ($eth['up'] ?? false) ? 'up' : 'down',
-                'ifSpeed' => $eth['speed'] ?? 0,
-                'ifDuplex' => ($eth['full_duplex'] ?? false) ? 'fullDuplex' : 'halfDuplex',
             ]);
 
             $port->ifName = $ifName;
-            $port->ifDescr = $eth['description'] ?? $ifName;
-            $port->ifOperStatus = ($eth['up'] ?? false) ? 'up' : 'down';
-            $port->ifAdminStatus = ($eth['up'] ?? false) ? 'up' : 'down';
-            $port->ifSpeed = $eth['speed'] ?? 0;
-            $port->ifDuplex = ($eth['full_duplex'] ?? false) ? 'fullDuplex' : 'halfDuplex';
+            $port->ifDescr = $ifName;
+            $port->ifOperStatus = $ifOperUp ? 'up' : 'down';
+            $port->ifAdminStatus = $ifOperUp ? 'up' : 'down';
+            $port->ifSpeed = $ifSpeed;
+            $port->ifDuplex = $fullDuplex ? 'fullDuplex' : 'halfDuplex';
+
+            // Counters
+            $port->ifInOctets = (int) ($stats['rx_bytes'] ?? 0);
+            $port->ifOutOctets = (int) ($stats['tx_bytes'] ?? 0);
+            $port->ifInUcastPkts = (int) ($stats['rx_pkts'] ?? $stats['rx_packets'] ?? 0);
+            $port->ifOutUcastPkts = (int) ($stats['tx_pkts'] ?? $stats['tx_packets'] ?? 0);
+            $port->ifInErrors = (int) ($stats['rx_errors'] ?? 0);
+            $port->ifOutErrors = (int) ($stats['tx_errors'] ?? 0);
             $port->save();
 
-            // Update port statistics if available
-            $stats = $portStats[$ifIndex] ?? null;
-            if ($stats) {
-                $port->ifInOctets = $stats['rx_bytes'] ?? 0;
-                $port->ifOutOctets = $stats['tx_bytes'] ?? 0;
-                $port->ifInUcastPkts = $stats['rx_packets'] ?? 0;
-                $port->ifOutUcastPkts = $stats['tx_packets'] ?? 0;
-                $port->ifInErrors = $stats['rx_errors'] ?? 0;
-                $port->ifOutErrors = $stats['tx_errors'] ?? 0;
-                $port->save();
+            // Store RRD data
+            $rrdDef = RrdDefinition::make()
+                ->addDataset('INOCTETS', 'COUNTER', 0)
+                ->addDataset('OUTOCTETS', 'COUNTER', 0);
 
-                // Store RRD data
-                $rrdDef = RrdDefinition::make()
-                    ->addDataset('INOCTETS', 'COUNTER', 0)
-                    ->addDataset('OUTOCTETS', 'COUNTER', 0);
+            $datastore->put($device->toArray(), 'port', [
+                'ifName' => $ifName,
+                'rrd_name' => ['port', $ifName],
+                'rrd_def' => $rrdDef,
+            ], [
+                'INOCTETS' => $port->ifInOctets,
+                'OUTOCTETS' => $port->ifOutOctets,
+            ]);
 
-                $datastore->put($device->toArray(), 'port', [
-                    'ifName' => $ifName,
-                    'rrd_name' => ['port', $ifName],
-                    'rrd_def' => $rrdDef,
-                ], [
-                    'INOCTETS' => $port->ifInOctets,
-                    'OUTOCTETS' => $port->ifOutOctets,
-                ]);
-            }
+            $ifIndex++;
         }
     }
 
@@ -181,17 +184,12 @@ class MistAp implements Module
         $numClients = (int) ($apStats['num_clients'] ?? 0);
         $sensors->push((new LegacyWirelessSensor('clients', $device->device_id, [], 'mist', 'total', 'Total Clients', $numClients))->toModel());
 
-        // Radio utilization
+        // Radio stats (present for connected APs)
         $band24 = $apStats['radio_stat']['band_24'] ?? [];
         $band5 = $apStats['radio_stat']['band_5'] ?? [];
 
-        $util24 = (int) ($band24['util_all'] ?? 0);
-        $util5 = (int) ($band5['util_all'] ?? 0);
-
-        if ($util24 > 0 || $util5 > 0) {
-            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band24', '2.4 GHz Utilization', $util24, 1, 1, 'sum', null, 100, 0, null, null, null, null, null, null))->toModel());
-            $sensors->push((new LegacyWirelessSensor('utilization', $device->device_id, [], 'mist', 'band5', '5 GHz Utilization', $util5, 1, 1, 'sum', null, 100, 0, null, null, null, null, null, null))->toModel());
-        }
+        $this->addRadioSensors($sensors, $device, '2.4 GHz', 'band24', is_array($band24) ? $band24 : []);
+        $this->addRadioSensors($sensors, $device, '5 GHz', 'band5', is_array($band5) ? $band5 : []);
 
         // Sync sensors and update RRD data
         $synced = $this->syncModels($device, 'wirelessSensors', $sensors, $existingSensors);
@@ -199,6 +197,63 @@ class MistAp implements Module
         // Update RRD for all sensors
         foreach ($device->wirelessSensors()->get() as $sensor) {
             $this->updateSensor($sensor, $os, $datastore);
+        }
+    }
+
+    private function addRadioSensors(Collection $sensors, Device $device, string $label, string $indexPrefix, array $radio): void
+    {
+        // Per-band clients
+        if (array_key_exists('num_clients', $radio)) {
+            $clients = (int) ($radio['num_clients'] ?? 0);
+            $sensors->push((new LegacyWirelessSensor('clients', $device->device_id, [], 'mist', $indexPrefix . '_clients', "$label Clients", $clients))->toModel());
+        }
+
+        // Channel
+        if (isset($radio['channel']) && is_numeric($radio['channel'])) {
+            $sensors->push((new LegacyWirelessSensor('channel', $device->device_id, [], 'mist', $indexPrefix . '_channel', "$label Channel", (int) $radio['channel']))->toModel());
+        }
+
+        // TX power (dBm)
+        if (isset($radio['power']) && is_numeric($radio['power'])) {
+            $sensors->push((new LegacyWirelessSensor('power', $device->device_id, [], 'mist', $indexPrefix . '_power', "$label TX Power", (int) $radio['power']))->toModel());
+        }
+
+        // Noise floor (dBm)
+        if (isset($radio['noise_floor']) && is_numeric($radio['noise_floor'])) {
+            $sensors->push((new LegacyWirelessSensor('noise-floor', $device->device_id, [], 'mist', $indexPrefix . '_noise', "$label Noise Floor", (int) $radio['noise_floor']))->toModel());
+        }
+
+        // Utilization breakdown (percent)
+        $utilMap = [
+            'util_all' => 'Utilization',
+            'util_tx' => 'TX Utilization',
+            'util_rx_in_bss' => 'RX (in BSS) Utilization',
+            'util_rx_other_bss' => 'RX (other BSS) Utilization',
+            'util_unknown_wifi' => 'Unknown WiFi Utilization',
+            'util_non_wifi' => 'Non-WiFi Utilization',
+            'util_undecodable_wifi' => 'Undecodable WiFi Utilization',
+        ];
+
+        foreach ($utilMap as $key => $desc) {
+            if (! array_key_exists($key, $radio) || ! is_numeric($radio[$key])) {
+                continue;
+            }
+            $val = (int) $radio[$key];
+            $sensors->push((new LegacyWirelessSensor(
+                'utilization',
+                $device->device_id,
+                [],
+                'mist',
+                $indexPrefix . '_' . $key,
+                "$label $desc",
+                $val,
+                1,
+                1,
+                'sum',
+                null,
+                100,
+                0
+            ))->toModel());
         }
     }
 
