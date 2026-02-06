@@ -205,12 +205,13 @@ class MistAp implements Module
             $processor->processor_descr = 'CPU';
             $processor->processor_oid = '.1.0.mist.0';
             $processor->processor_precision = 1;
+            $processor->processor_usage = $usage;
             $device->processors()->save($processor);
+        } else {
+            $processor->processor_usage = $usage;
+            $processor->processor_descr = 'CPU';
+            $processor->save();
         }
-
-        $processor->processor_usage = $usage;
-        $processor->processor_descr = 'CPU';
-        $processor->save();
 
         $rrdDef = RrdDefinition::make()->addDataset('usage', 'GAUGE', -273, 1000);
         $datastore->put($device->toArray(), 'processors', [
