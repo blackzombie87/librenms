@@ -164,18 +164,30 @@ class MistAp implements Module
             $port->ifOutErrors = (int) ($stats['tx_errors'] ?? 0);
             $port->save();
 
-            // Store RRD data
+            // Store RRD data using same format as includes/polling/ports.inc.php (port_id-based name, DERIVE, application 'ports')
+            $rrdName = 'port-id' . $port->port_id;
             $rrdDef = RrdDefinition::make()
-                ->addDataset('INOCTETS', 'COUNTER', 0)
-                ->addDataset('OUTOCTETS', 'COUNTER', 0);
+                ->addDataset('INOCTETS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTOCTETS', 'DERIVE', 0, 12500000000)
+                ->addDataset('INERRORS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTERRORS', 'DERIVE', 0, 12500000000)
+                ->addDataset('INUCASTPKTS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTUCASTPKTS', 'DERIVE', 0, 12500000000);
 
-            $datastore->put($device->toArray(), 'port', [
+            $datastore->put($device->toArray(), 'ports', [
                 'ifName' => $ifName,
-                'rrd_name' => ['port', $ifName],
+                'ifAlias' => $port->ifAlias ?? '',
+                'ifIndex' => $port->ifIndex,
+                'port_descr_type' => $port->port_descr_type ?? 'ifName',
+                'rrd_name' => $rrdName,
                 'rrd_def' => $rrdDef,
             ], [
                 'INOCTETS' => $port->ifInOctets,
                 'OUTOCTETS' => $port->ifOutOctets,
+                'INERRORS' => $port->ifInErrors,
+                'OUTERRORS' => $port->ifOutErrors,
+                'INUCASTPKTS' => $port->ifInUcastPkts,
+                'OUTUCASTPKTS' => $port->ifOutUcastPkts,
             ]);
 
             $ifIndex++;
@@ -242,14 +254,18 @@ class MistAp implements Module
             $mempool->mempool_type = 'memory';
             $mempool->mempool_class = 'system';
             $mempool->mempool_descr = 'Memory';
+            $mempool->mempool_total = $total;
+            $mempool->mempool_used = $used;
+            $mempool->mempool_free = $free;
+            $mempool->mempool_perc = $total > 0 ? round($used / $total * 100, 2) : 0;
             $device->mempools()->save($mempool);
+        } else {
+            $mempool->mempool_total = $total;
+            $mempool->mempool_used = $used;
+            $mempool->mempool_free = $free;
+            $mempool->mempool_perc = $total > 0 ? round($used / $total * 100, 2) : 0;
+            $mempool->save();
         }
-
-        $mempool->mempool_total = $total;
-        $mempool->mempool_used = $used;
-        $mempool->mempool_free = $free;
-        $mempool->mempool_perc = $total > 0 ? round($used / $total * 100, 2) : 0;
-        $mempool->save();
 
         $rrdDef = RrdDefinition::make()
             ->addDataset('used', 'GAUGE', 0)
