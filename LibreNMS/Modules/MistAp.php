@@ -3,9 +3,11 @@
 namespace LibreNMS\Modules;
 
 use App\ApiClients\MistApi;
-use App\Facades\DeviceCache;
 use App\Models\Device;
+use App\Models\Mempool;
 use App\Models\Port;
+use App\Models\Processor;
+use App\Models\Sensor;
 use App\Models\WirelessSensor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -47,11 +49,8 @@ class MistAp implements Module
     {
         $device = $os->getDevice();
 
-        if (! $status->isEnabledAndDeviceUp($device, false)) {
-            return false;
-        }
-
-        if ($device->os !== 'mist-ap') {
+        // Poll even when device is down so we can update status from API (connected/disconnected)
+        if (! $status->isEnabled() || $device->os !== 'mist-ap') {
             return false;
         }
 
@@ -94,13 +93,21 @@ class MistAp implements Module
                 Log::channel('stdout')->debug('[MistAp] AP stats: ' . json_encode($apStats, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             }
 
-            // Update device basic info
+            // Set device up/down from Mist API status (connected vs disconnected)
+            $this->updateDeviceStatus($device, $apStats);
+
+            // Update device basic info (version etc. may come from apStats when connected)
             $device->hardware = $apData['model'] ?? $device->hardware;
-            $device->version = $apData['version'] ?? $device->version;
+            $device->version = $apStats['version'] ?? $apData['version'] ?? $device->version;
             $device->serial = $apData['serial'] ?? $device->serial;
-            $device->uptime = $apData['uptime'] ?? $device->uptime;
-            $device->sysDescr = ($apData['model'] ?? 'Mist AP') . ' - ' . ($apData['version'] ?? 'Unknown');
+            $device->uptime = $apStats['uptime'] ?? $apData['uptime'] ?? $device->uptime;
+            $device->sysDescr = ($apData['model'] ?? 'Mist AP') . ' - ' . ($apStats['version'] ?? $apData['version'] ?? 'Unknown');
             $device->save();
+
+            // Native tables: processor, mempool, temperature (only when connected and data present)
+            $this->updateProcessor($device, $apStats, $datastore);
+            $this->updateMempool($device, $apStats, $datastore);
+            $this->updateEnvSensors($device, $apStats, $datastore);
 
             // Update ports (ethernet interfaces)
             $this->updatePorts($device, $apData, $apStats, $datastore);
@@ -172,6 +179,135 @@ class MistAp implements Module
             ]);
 
             $ifIndex++;
+        }
+    }
+
+    private function updateDeviceStatus(Device $device, array $apStats): void
+    {
+        $status = strtolower((string) ($apStats['status'] ?? ''));
+        $device->status = ($status === 'connected') ? 1 : 0;
+        $device->status_reason = $device->status ? '' : ($status !== '' ? $status : 'unknown');
+    }
+
+    private function updateProcessor(Device $device, array $apStats, DataStorageInterface $datastore): void
+    {
+        if (! array_key_exists('cpu_util', $apStats) || ! is_numeric($apStats['cpu_util'])) {
+            return;
+        }
+
+        $usage = (int) $apStats['cpu_util'];
+        $processor = Processor::firstOrCreate(
+            [
+                'device_id' => $device->device_id,
+                'processor_index' => '0',
+                'processor_type' => 'mist',
+            ],
+            [
+                'processor_descr' => 'CPU',
+                'processor_oid' => '.1.0.mist.0',
+                'processor_precision' => 1,
+            ]
+        );
+        $processor->processor_usage = $usage;
+        $processor->processor_descr = 'CPU';
+        $processor->save();
+
+        $rrdDef = RrdDefinition::make()->addDataset('usage', 'GAUGE', -273, 1000);
+        $datastore->put($device->toArray(), 'processors', [
+            'processor_type' => 'mist',
+            'processor_index' => '0',
+            'rrd_name' => ['processor', 'mist', '0'],
+            'rrd_def' => $rrdDef,
+        ], ['usage' => $usage]);
+    }
+
+    private function updateMempool(Device $device, array $apStats, DataStorageInterface $datastore): void
+    {
+        $totalKb = isset($apStats['mem_total_kb']) && is_numeric($apStats['mem_total_kb']) ? (int) $apStats['mem_total_kb'] : null;
+        $usedKb = isset($apStats['mem_used_kb']) && is_numeric($apStats['mem_used_kb']) ? (int) $apStats['mem_used_kb'] : null;
+        if ($totalKb === null || $totalKb <= 0 || $usedKb === null) {
+            return;
+        }
+
+        $total = $totalKb * 1024;
+        $used = $usedKb * 1024;
+        $free = $total - $used;
+
+        $mempool = Mempool::firstOrCreate(
+            [
+                'device_id' => $device->device_id,
+                'mempool_index' => '0',
+            ],
+            [
+                'mempool_type' => 'memory',
+                'mempool_class' => 'system',
+                'mempool_descr' => 'Memory',
+            ]
+        );
+        $mempool->mempool_total = $total;
+        $mempool->mempool_used = $used;
+        $mempool->mempool_free = $free;
+        $mempool->mempool_perc = $total > 0 ? round($used / $total * 100, 2) : 0;
+        $mempool->save();
+
+        $rrdDef = RrdDefinition::make()
+            ->addDataset('used', 'GAUGE', 0)
+            ->addDataset('free', 'GAUGE', 0);
+        $datastore->put($device->toArray(), 'mempool', [
+            'mempool_type' => 'memory',
+            'mempool_class' => 'system',
+            'mempool_index' => '0',
+            'rrd_name' => ['mempool', 'memory', 'system', '0'],
+            'rrd_def' => $rrdDef,
+        ], ['used' => $used, 'free' => $free]);
+    }
+
+    private function updateEnvSensors(Device $device, array $apStats, DataStorageInterface $datastore): void
+    {
+        $env = $apStats['env_stat'] ?? [];
+        if (! is_array($env) || empty($env)) {
+            return;
+        }
+
+        $sensors = [
+            'cpu_temp' => ['index' => 'cpu', 'descr' => 'CPU Temperature'],
+            'ambient_temp' => ['index' => 'ambient', 'descr' => 'Ambient Temperature'],
+        ];
+
+        foreach ($sensors as $key => $meta) {
+            if (! array_key_exists($key, $env) || ! is_numeric($env[$key])) {
+                continue;
+            }
+            $value = (float) $env[$key];
+            $sensor = Sensor::firstOrCreate(
+                [
+                    'device_id' => $device->device_id,
+                    'sensor_class' => 'temperature',
+                    'sensor_type' => 'mist',
+                    'sensor_index' => $meta['index'],
+                ],
+                [
+                    'poller_type' => 'api',
+                    'sensor_oid' => 'mist.env.' . $key,
+                    'sensor_descr' => $meta['descr'],
+                    'sensor_divisor' => 1,
+                    'sensor_multiplier' => 1,
+                    'rrd_type' => 'GAUGE',
+                ]
+            );
+            $sensor->sensor_current = $value;
+            $sensor->sensor_descr = $meta['descr'];
+            $sensor->save();
+
+            $rrdDef = RrdDefinition::make()->addDataset('sensor', 'GAUGE');
+            $datastore->put($device->toArray(), 'sensor', [
+                'sensor_class' => 'temperature',
+                'sensor_type' => 'mist',
+                'sensor_descr' => $meta['descr'],
+                'sensor_index' => $meta['index'],
+                'rrd_name' => ['sensor', 'temperature', 'mist', $meta['index']],
+                'rrd_def' => $rrdDef,
+            ], ['sensor' => $value]);
         }
     }
 
@@ -291,15 +427,23 @@ class MistAp implements Module
 
     public function dataExists(Device $device): bool
     {
-        return $device->ports()->exists() || $device->wirelessSensors()->exists();
+        return $device->ports()->exists()
+            || $device->wirelessSensors()->exists()
+            || $device->processors()->exists()
+            || $device->mempools()->exists()
+            || $device->sensors()->exists();
     }
 
     public function cleanup(Device $device): int
     {
-        $portsDeleted = $device->ports()->delete();
-        $sensorsDeleted = $device->wirelessSensors()->delete();
+        $count = 0;
+        $count += $device->ports()->delete();
+        $count += $device->wirelessSensors()->delete();
+        $count += $device->processors()->delete();
+        $count += $device->mempools()->delete();
+        $count += $device->sensors()->where('poller_type', 'api')->delete();
 
-        return $portsDeleted + $sensorsDeleted;
+        return $count;
     }
 
     public function dump(Device $device, string $type): ?array
@@ -311,6 +455,9 @@ class MistAp implements Module
         return [
             'ports' => $device->ports()->get()->map->makeHidden(['device_id', 'port_id', 'deleted']),
             'wireless_sensors' => $device->wirelessSensors()->get()->map->makeHidden(['device_id', 'sensor_id', 'deleted']),
+            'processors' => $device->processors()->get()->map->makeHidden(['device_id', 'processor_id']),
+            'mempools' => $device->mempools()->get()->map->makeHidden(['device_id', 'mempool_id']),
+            'sensors' => $device->sensors()->where('poller_type', 'api')->get()->map->makeHidden(['device_id', 'sensor_id']),
         ];
     }
 }
