@@ -196,18 +196,18 @@ class MistAp implements Module
         }
 
         $usage = (int) $apStats['cpu_util'];
-        $processor = Processor::firstOrCreate(
-            [
-                'device_id' => $device->device_id,
-                'processor_index' => '0',
-                'processor_type' => 'mist',
-            ],
-            [
-                'processor_descr' => 'CPU',
-                'processor_oid' => '.1.0.mist.0',
-                'processor_precision' => 1,
-            ]
-        );
+        $processor = $device->processors()->where('processor_index', '0')->where('processor_type', 'mist')->first();
+
+        if (! $processor) {
+            $processor = new Processor;
+            $processor->processor_index = '0';
+            $processor->processor_type = 'mist';
+            $processor->processor_descr = 'CPU';
+            $processor->processor_oid = '.1.0.mist.0';
+            $processor->processor_precision = 1;
+            $device->processors()->save($processor);
+        }
+
         $processor->processor_usage = $usage;
         $processor->processor_descr = 'CPU';
         $processor->save();
@@ -233,17 +233,17 @@ class MistAp implements Module
         $used = $usedKb * 1024;
         $free = $total - $used;
 
-        $mempool = Mempool::firstOrCreate(
-            [
-                'device_id' => $device->device_id,
-                'mempool_index' => '0',
-            ],
-            [
-                'mempool_type' => 'memory',
-                'mempool_class' => 'system',
-                'mempool_descr' => 'Memory',
-            ]
-        );
+        $mempool = $device->mempools()->where('mempool_index', '0')->first();
+
+        if (! $mempool) {
+            $mempool = new Mempool;
+            $mempool->mempool_index = '0';
+            $mempool->mempool_type = 'memory';
+            $mempool->mempool_class = 'system';
+            $mempool->mempool_descr = 'Memory';
+            $device->mempools()->save($mempool);
+        }
+
         $mempool->mempool_total = $total;
         $mempool->mempool_used = $used;
         $mempool->mempool_free = $free;
@@ -279,22 +279,26 @@ class MistAp implements Module
                 continue;
             }
             $value = (float) $env[$key];
-            $sensor = Sensor::firstOrCreate(
-                [
-                    'device_id' => $device->device_id,
-                    'sensor_class' => 'temperature',
-                    'sensor_type' => 'mist',
-                    'sensor_index' => $meta['index'],
-                ],
-                [
-                    'poller_type' => 'api',
-                    'sensor_oid' => 'mist.env.' . $key,
-                    'sensor_descr' => $meta['descr'],
-                    'sensor_divisor' => 1,
-                    'sensor_multiplier' => 1,
-                    'rrd_type' => 'GAUGE',
-                ]
-            );
+            $sensor = $device->sensors()
+                ->where('sensor_class', 'temperature')
+                ->where('sensor_type', 'mist')
+                ->where('sensor_index', $meta['index'])
+                ->first();
+
+            if (! $sensor) {
+                $sensor = new Sensor;
+                $sensor->sensor_class = 'temperature';
+                $sensor->sensor_type = 'mist';
+                $sensor->sensor_index = $meta['index'];
+                $sensor->poller_type = 'api';
+                $sensor->sensor_oid = 'mist.env.' . $key;
+                $sensor->sensor_descr = $meta['descr'];
+                $sensor->sensor_divisor = 1;
+                $sensor->sensor_multiplier = 1;
+                $sensor->rrd_type = 'GAUGE';
+                $device->sensors()->save($sensor);
+            }
+
             $sensor->sensor_current = $value;
             $sensor->sensor_descr = $meta['descr'];
             $sensor->save();
