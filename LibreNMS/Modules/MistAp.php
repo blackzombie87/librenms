@@ -4,6 +4,7 @@ namespace LibreNMS\Modules;
 
 use App\ApiClients\MistApi;
 use App\Models\Device;
+use App\Models\Link;
 use App\Models\Mempool;
 use App\Models\Port;
 use App\Models\Processor;
@@ -112,6 +113,9 @@ class MistAp implements Module
             // Update ports (ethernet interfaces)
             $this->updatePorts($device, $apData, $apStats, $datastore);
 
+            // Update LLDP neighbors from lldp_stats
+            $this->updateLldpLinks($device, $apStats);
+
             // Update wireless sensors
             $this->updateWirelessSensors($os, $device, $apData, $apStats, $datastore);
 
@@ -191,6 +195,53 @@ class MistAp implements Module
             ]);
 
             $ifIndex++;
+        }
+    }
+
+    /**
+     * Update LLDP neighbor links from Mist API lldp_stats (keyed by interface name, e.g. eth0).
+     * Stores in the same links table used by discovery (protocol = lldp).
+     */
+    private function updateLldpLinks(Device $device, array $apStats): void
+    {
+        $lldpStats = $apStats['lldp_stats'] ?? [];
+        if (! is_array($lldpStats) || empty($lldpStats)) {
+            return;
+        }
+
+        foreach ($device->ports()->get() as $port) {
+            $lldp = $lldpStats[$port->ifName] ?? null;
+
+            // Remove existing LLDP links for this port; we'll re-add if we have current data
+            $port->links()->where('protocol', 'lldp')->delete();
+
+            if (! is_array($lldp) || empty($lldp)) {
+                continue;
+            }
+
+            $remoteHostname = trim((string) ($lldp['system_name'] ?? ''));
+            $remotePort = trim((string) ($lldp['port_id'] ?? $lldp['port_desc'] ?? ''));
+            $remotePlatform = trim((string) ($lldp['system_desc'] ?? '')) ?: null;
+
+            if ($remoteHostname === '' && $remotePort === '') {
+                continue;
+            }
+
+            if ($remoteHostname === '') {
+                $remoteHostname = (string) ($lldp['chassis_id'] ?? 'unknown');
+            }
+
+            $link = new Link;
+            $link->local_port_id = $port->port_id;
+            $link->local_device_id = $device->device_id;
+            $link->protocol = 'lldp';
+            $link->remote_hostname = $remoteHostname;
+            $link->remote_port = $remotePort;
+            $link->remote_platform = $remotePlatform;
+            $link->remote_version = '';
+            $link->remote_device_id = 0;
+            $link->remote_port_id = null;
+            $link->save();
         }
     }
 
@@ -452,12 +503,14 @@ class MistAp implements Module
             || $device->wirelessSensors()->exists()
             || $device->processors()->exists()
             || $device->mempools()->exists()
-            || $device->sensors()->exists();
+            || $device->sensors()->exists()
+            || Link::where('local_device_id', $device->device_id)->where('protocol', 'lldp')->exists();
     }
 
     public function cleanup(Device $device): int
     {
         $count = 0;
+        $count += Link::where('local_device_id', $device->device_id)->where('protocol', 'lldp')->delete();
         $count += $device->ports()->delete();
         $count += $device->wirelessSensors()->delete();
         $count += $device->processors()->delete();
@@ -479,6 +532,7 @@ class MistAp implements Module
             'processors' => $device->processors()->get()->map->makeHidden(['device_id', 'processor_id']),
             'mempools' => $device->mempools()->get()->map->makeHidden(['device_id', 'mempool_id']),
             'sensors' => $device->sensors()->where('poller_type', 'api')->get()->map->makeHidden(['device_id', 'sensor_id']),
+            'links' => Link::where('local_device_id', $device->device_id)->where('protocol', 'lldp')->get()->makeHidden(['id']),
         ];
     }
 }
