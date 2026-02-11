@@ -121,6 +121,9 @@ class MistAp implements Module
             // Update ports (ethernet interfaces)
             $this->updatePorts($device, $apData, $apStats, $datastore);
 
+            // Create per-band radio ports with byte/packet counters
+            $this->updateRadioPorts($device, $apStats, $datastore);
+
             // Update LLDP neighbors from lldp_stats
             $this->updateLldpLinks($device, $apStats);
 
@@ -203,6 +206,89 @@ class MistAp implements Module
             ]);
 
             $ifIndex++;
+        }
+    }
+
+    /**
+     * Create/update pseudo-ports for each wireless band (2.4 GHz / 5 GHz / 6 GHz / etc.) with tx/rx byte and packet counters.
+     */
+    private function updateRadioPorts(Device $device, array $apStats, DataStorageInterface $datastore): void
+    {
+        $radioStat = $apStats['radio_stat'] ?? [];
+        if (! is_array($radioStat) || empty($radioStat)) {
+            return;
+        }
+
+        // Map band keys to display labels
+        $bandLabels = [
+            'band_24' => '2.4 GHz Radio',
+            'band_5' => '5 GHz Radio',
+            'band_6' => '6 GHz Radio',
+        ];
+
+        $baseIfIndex = 100;
+        $bandIndex = 0;
+
+        // Iterate over all bands present in radio_stat (band_24, band_5, band_6, etc.)
+        foreach ($radioStat as $bandKey => $radio) {
+            if (! is_array($radio) || empty($radio)) {
+                continue;
+            }
+
+            // Extract frequency from band key (e.g., 'band_24' -> '24', 'band_5' -> '5')
+            $freq = preg_replace('/^band_/', '', $bandKey);
+            $ifIndex = $baseIfIndex + $bandIndex++;
+            $ifName = 'wlan' . $freq;
+            $label = $bandLabels[$bandKey] ?? ($freq . ' GHz Radio');
+
+            $port = Port::firstOrNew([
+                'device_id' => $device->device_id,
+                'ifIndex' => $ifIndex,
+            ], [
+                'ifName' => $ifName,
+                'ifDescr' => $label,
+                'ifType' => 71, // ieee80211
+            ]);
+
+            $port->ifName = $ifName;
+            $port->ifDescr = $label;
+            $port->ifType = 71;
+            $port->ifOperStatus = 'up';
+            $port->ifAdminStatus = 'up';
+            $port->ifSpeed = 0;
+
+            $port->ifInOctets = (int) ($radio['rx_bytes'] ?? 0);
+            $port->ifOutOctets = (int) ($radio['tx_bytes'] ?? 0);
+            $port->ifInUcastPkts = (int) ($radio['rx_pkts'] ?? $radio['rx_packets'] ?? 0);
+            $port->ifOutUcastPkts = (int) ($radio['tx_pkts'] ?? $radio['tx_packets'] ?? 0);
+            $port->ifInErrors = 0;
+            $port->ifOutErrors = 0;
+            $port->save();
+
+            $rrdName = 'port-id' . $port->port_id;
+            $rrdDef = RrdDefinition::make()
+                ->addDataset('INOCTETS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTOCTETS', 'DERIVE', 0, 12500000000)
+                ->addDataset('INERRORS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTERRORS', 'DERIVE', 0, 12500000000)
+                ->addDataset('INUCASTPKTS', 'DERIVE', 0, 12500000000)
+                ->addDataset('OUTUCASTPKTS', 'DERIVE', 0, 12500000000);
+
+            $datastore->put($device->toArray(), 'ports', [
+                'ifName' => $ifName,
+                'ifAlias' => $port->ifAlias ?? '',
+                'ifIndex' => $port->ifIndex,
+                'port_descr_type' => $port->port_descr_type ?? 'ifName',
+                'rrd_name' => $rrdName,
+                'rrd_def' => $rrdDef,
+            ], [
+                'INOCTETS' => $port->ifInOctets,
+                'OUTOCTETS' => $port->ifOutOctets,
+                'INERRORS' => $port->ifInErrors,
+                'OUTERRORS' => $port->ifOutErrors,
+                'INUCASTPKTS' => $port->ifInUcastPkts,
+                'OUTUCASTPKTS' => $port->ifOutUcastPkts,
+            ]);
         }
     }
 
@@ -400,12 +486,26 @@ class MistAp implements Module
         $numClients = (int) ($apStats['num_clients'] ?? 0);
         $sensors->push((new LegacyWirelessSensor('clients', $device->device_id, [], 'mist', 'total', 'Total Clients', $numClients))->toModel());
 
-        // Radio stats (present for connected APs)
-        $band24 = $apStats['radio_stat']['band_24'] ?? [];
-        $band5 = $apStats['radio_stat']['band_5'] ?? [];
+        // Radio stats (present for connected APs) - iterate over all bands dynamically
+        $radioStat = $apStats['radio_stat'] ?? [];
+        $bandLabels = [
+            'band_24' => '2.4 GHz',
+            'band_5' => '5 GHz',
+            'band_6' => '6 GHz',
+        ];
 
-        $this->addRadioSensors($sensors, $device, '2.4 GHz', 'band24', is_array($band24) ? $band24 : []);
-        $this->addRadioSensors($sensors, $device, '5 GHz', 'band5', is_array($band5) ? $band5 : []);
+        foreach ($radioStat as $bandKey => $radio) {
+            if (! is_array($radio) || empty($radio)) {
+                continue;
+            }
+
+            // Extract frequency from band key and create index prefix (e.g., 'band_24' -> 'band24', 'band_6' -> 'band6')
+            $freq = preg_replace('/^band_/', '', $bandKey);
+            $indexPrefix = 'band' . $freq;
+            $label = $bandLabels[$bandKey] ?? ($freq . ' GHz');
+
+            $this->addRadioSensors($sensors, $device, $label, $indexPrefix, $radio);
+        }
 
         // Sync sensors and update RRD data
         $synced = $this->syncModels($device, 'wirelessSensors', $sensors, $existingSensors);
@@ -426,7 +526,31 @@ class MistAp implements Module
 
         // Channel
         if (isset($radio['channel']) && is_numeric($radio['channel'])) {
-            $sensors->push((new LegacyWirelessSensor('channel', $device->device_id, [], 'mist', $indexPrefix . '_channel', "$label Channel", (int) $radio['channel']))->toModel());
+            $channel = (int) $radio['channel'];
+            $sensors->push((new LegacyWirelessSensor('channel', $device->device_id, [], 'mist', $indexPrefix . '_channel', "$label Channel", $channel))->toModel());
+
+            // Also expose channel as a generic state sensor so it is visible on the device overview page
+            $stateSensor = $device->sensors()
+                ->where('sensor_class', 'state')
+                ->where('sensor_type', 'mist')
+                ->where('sensor_index', $indexPrefix . '_channel')
+                ->first();
+
+            if (! $stateSensor) {
+                $stateSensor = new Sensor;
+                $stateSensor->sensor_class = 'state';
+                $stateSensor->sensor_type = 'mist';
+                $stateSensor->sensor_index = $indexPrefix . '_channel';
+                $stateSensor->poller_type = 'api';
+                $stateSensor->sensor_descr = $label . ' Channel';
+                $stateSensor->sensor_divisor = 1;
+                $stateSensor->sensor_multiplier = 1;
+                $stateSensor->rrd_type = 'GAUGE';
+                $device->sensors()->save($stateSensor);
+            }
+
+            $stateSensor->sensor_current = $channel;
+            $stateSensor->save();
         }
 
         // TX power (dBm)
