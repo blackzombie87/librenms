@@ -90,7 +90,7 @@
                     </div>
                     <div class="form-group">
                         <label for="api_key">{{ __('API Key') }}</label>
-                        <input type="text" class="form-control" id="api_key" name="api_key" required>
+                        <input type="password" class="form-control" id="api_key" name="api_key" required>
                     </div>
                     <div class="form-group">
                         <label for="org_id">{{ __('Organization ID') }}</label>
@@ -140,7 +140,7 @@
                     </div>
                     <div class="form-group">
                         <label for="api_key{{ $org->id }}">{{ __('API Key') }}</label>
-                        <input type="text" class="form-control" id="api_key{{ $org->id }}" name="api_key" value="{{ $org->api_key }}" required>
+                        <input type="password" class="form-control" id="api_key{{ $org->id }}" name="api_key" value="{{ $org->api_key }}" required>
                     </div>
                     <div class="form-group">
                         <label for="org_id{{ $org->id }}">{{ __('Organization ID') }}</label>
