@@ -102,6 +102,13 @@ class MistAp implements Module
             $device->version = $apStats['version'] ?? $apData['version'] ?? $device->version;
             $device->serial = $apData['serial'] ?? $device->serial;
             $device->uptime = $apStats['uptime'] ?? $apData['uptime'] ?? $device->uptime;
+
+            // Keep management IP in sync when provided by the Mist API
+            $apIp = $apStats['ip'] ?? null;
+            if ($apIp) {
+                $device->ip = inet_pton($apIp);
+            }
+
             $device->sysDescr = ($apData['model'] ?? 'Mist AP') . ' - ' . ($apStats['version'] ?? $apData['version'] ?? 'Unknown');
             $device->save();
 

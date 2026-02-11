@@ -44,16 +44,12 @@ foreach ($mistOrgs as $mistOrg) {
                 \DeviceCache::setPrimary($orgDevice->device_id);
                 $orgDevice = \DeviceCache::getPrimary();
                 $orgDevice->setAttrib('mist.org_id', $mistOrg->org_id);
-                $orgDevice->setAttrib('mist.api_url', $mistOrg->api_url);
-                $orgDevice->setAttrib('mist.api_key', $mistOrg->api_key);
                 Log::info("Created Mist org device: {$mistOrg->name}");
             }
         } else {
             // Update org device attributes
             $orgDevice->sysName = $mistOrg->name . ' (Mist Org)';
             $orgDevice->setAttrib('mist.org_id', $mistOrg->org_id);
-            $orgDevice->setAttrib('mist.api_url', $mistOrg->api_url);
-            $orgDevice->setAttrib('mist.api_key', $mistOrg->api_key);
             $orgDevice->save();
         }
 
@@ -118,9 +114,17 @@ foreach ($mistOrgs as $mistOrg) {
                     continue;
                 }
 
-                // Use internal IP if available, otherwise use MAC-based hostname
+                $apName = trim((string) ($apData['name'] ?? ''));
                 $apIp = $apData['ip'] ?? null;
-                $apHostname = $apIp ?: ('mist-ap-' . str_replace(':', '-', $mac));
+
+                // Initial hostname behaviour:
+                // - If Mist has a name set, use that as hostname (one-time on creation)
+                // - Otherwise, prefer the management IP, then fall back to a MAC-based name
+                $apHostname = $apName !== ''
+                    ? $apName
+                    : ($apIp ?: ('mist-ap-' . str_replace(':', '-', $mac)));
+
+                $sysName = $apName !== '' ? $apName : ($siteName . '-' . substr($mac, -4));
 
                 // Check if AP device already exists (by Mist internal ID or MAC)
                 $apDevice = Device::where('os', 'mist-ap')
@@ -139,7 +143,7 @@ foreach ($mistOrgs as $mistOrg) {
                 if (! $apDevice) {
                     $apDevice = new Device([
                         'hostname' => $apHostname,
-                        'sysName' => $apData['name'] ?? ($siteName . '-' . substr($mac, -4)),
+                        'sysName' => $sysName,
                         'sysObjectID' => $mac,
                         'os' => 'mist-ap',
                         'ip' => $apIp ? inet_pton($apIp) : null,
@@ -159,8 +163,8 @@ foreach ($mistOrgs as $mistOrg) {
                         Log::info("Created Mist AP device: {$apDevice->sysName} ({$mac})");
                     }
                 } else {
-                    // Update existing AP device
-                    $apDevice->sysName = $apData['name'] ?? ($siteName . '-' . substr($mac, -4));
+                    // Update existing AP device: keep hostname user-editable, only refresh sysName
+                    $apDevice->sysName = $sysName;
                     if ($apIp) {
                         $apDevice->ip = inet_pton($apIp);
                     }

@@ -40,26 +40,25 @@ class MistApi
             return $mistOrg->api_url !== '' && $mistOrg->api_key !== '';
         }
 
-        // Fallback: device-level credentials (e.g. legacy or single-org)
-        $baseUrl = (string) $this->device->getAttrib('mist.api_url');
-        $token = (string) $this->device->getAttrib('mist.api_key');
-
-        return $baseUrl !== '' && $token !== '';
+        return false;
     }
 
     public function getClient(): PendingRequest
     {
         if ($this->client === null) {
             $orgId = (string) $this->device->getAttrib('mist.org_id');
-            $mistOrg = MistOrg::where('org_id', $orgId)->where('enabled', true)->first();
+            $mistOrg = $orgId !== ''
+                ? MistOrg::where('org_id', $orgId)->where('enabled', true)->first()
+                : null;
 
-            if ($mistOrg) {
-                $baseUrl = rtrim($mistOrg->api_url, '/');
-                $token = $mistOrg->api_key;
-            } else {
-                $baseUrl = rtrim((string) $this->device->getAttrib('mist.api_url'), '/');
-                $token = (string) $this->device->getAttrib('mist.api_key');
+            // isEnabled() should prevent this from being called without a valid org,
+            // but guard anyway to avoid constructing an invalid client.
+            if (! $mistOrg) {
+                throw new \RuntimeException('Mist org not configured or disabled for device ' . $this->device->device_id);
             }
+
+            $baseUrl = rtrim($mistOrg->api_url, '/');
+            $token = $mistOrg->api_key;
 
             $this->client = Http::client()
                 ->baseUrl($baseUrl)

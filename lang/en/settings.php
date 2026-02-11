@@ -62,7 +62,7 @@ return [
             'location' => ['name' => 'Location Settings'],
             'graylog' => ['name' => 'Graylog Integration'],
             'oxidized' => ['name' => 'Oxidized Integration'],
-            'mist' => ['name' => 'Mist Cloud Integration'],
+            'mist' => ['name' => 'Juniper Mist Integration'],
             'mac_oui' => ['name' => 'Mac OUI Lookup Integration'],
             'peeringdb' => ['name' => 'PeeringDB Integration'],
             'nfsen' => ['name' => 'NfSen Integration'],
