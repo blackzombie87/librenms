@@ -542,6 +542,7 @@ class MistAp implements Module
                 $stateSensor->sensor_type = 'mist';
                 $stateSensor->sensor_index = $indexPrefix . '_channel';
                 $stateSensor->poller_type = 'api';
+                $stateSensor->sensor_oid = 'mist.radio.' . $indexPrefix . '.channel';
                 $stateSensor->sensor_descr = $label . ' Channel';
                 $stateSensor->sensor_divisor = 1;
                 $stateSensor->sensor_multiplier = 1;
