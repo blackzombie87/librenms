@@ -146,9 +146,10 @@ foreach ($mistOrgs as $mistOrg) {
                         'sysName' => $sysName,
                         'sysObjectID' => $mac,
                         'os' => 'mist-ap',
-                        'ip' => $apIp ? inet_pton($apIp) : null,
-                        'snmp_disable' => true,
-                        'status' => true, // Will be updated by ping check if IP exists
+                        // Let Device model mutator handle IP conversion
+                        'ip' => $apIp ?: null,
+                        'snmp_disable' => true, // Will be updated by ping check if IP exists
+                        'status' => true,
                         'status_reason' => '',
                     ]);
 
@@ -166,7 +167,8 @@ foreach ($mistOrgs as $mistOrg) {
                     // Update existing AP device: keep hostname user-editable, only refresh sysName
                     $apDevice->sysName = $sysName;
                     if ($apIp) {
-                        $apDevice->ip = inet_pton($apIp);
+                        // Use mutator to store IP correctly
+                        $apDevice->ip = $apIp;
                     }
                     $apDevice->setAttrib('mist.org_id', $mistOrg->org_id);
                     $apDevice->setAttrib('mist.site_id', $siteId);

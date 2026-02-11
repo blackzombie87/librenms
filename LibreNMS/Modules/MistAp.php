@@ -106,7 +106,8 @@ class MistAp implements Module
             // Keep management IP in sync when provided by the Mist API
             $apIp = $apStats['ip'] ?? null;
             if ($apIp) {
-                $device->ip = inet_pton($apIp);
+                // Device model mutator will convert this to binary for storage
+                $device->ip = $apIp;
             }
 
             $device->sysDescr = ($apData['model'] ?? 'Mist AP') . ' - ' . ($apStats['version'] ?? $apData['version'] ?? 'Unknown');
