@@ -1140,7 +1140,7 @@ return [
         'mist' => [
             'enabled' => [
                 'description' => 'Enable Mist API integration',
-                'help' => 'Enables polling of Juniper Mist Cloud via the Mist REST API. Per-org details are configured in the Mist Organizations panel on this page.',
+                'help' => 'Enables polling of Juniper Mist Cloud via the Mist REST API. Per-org details are configured on the Mist Organizations admin page.',
             ],
         ],
         'html' => [

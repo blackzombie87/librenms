@@ -202,11 +202,8 @@ Route::middleware(['auth'])->group(function (): void {
         Route::post('plugin/settings/{plugin:plugin_name}', [PluginSettingsController::class, 'update'])->name('plugin.update');
 
         Route::resource('port-groups', PortGroupController::class);
-        // Mist organization CRUD lives under global settings (External -> Juniper Mist Integration)
-        // but keeps the same route names (mist-orgs.*) for existing views and redirects.
-        Route::resource('settings/mist-orgs', \App\Http\Controllers\MistOrgController::class)
-            ->only(['index', 'store', 'update', 'destroy'])
-            ->names('mist-orgs');
+        Route::resource('mist-orgs', \App\Http\Controllers\MistOrgController::class)
+            ->only(['index', 'store', 'update', 'destroy']);
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results/{group?}', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');

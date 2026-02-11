@@ -69,6 +69,11 @@
                                                                        aria-hidden="true"></i> {{ __('Smokeping') }}</a>
                                 </li>
                                 @endconfig
+                                @config('mist.enabled')
+                                <li><a href="{{ url('mist-orgs') }}"><i class="fa fa-cloud fa-fw fa-lg"
+                                                                       aria-hidden="true"></i> {{ __('Mist Organizations') }}</a>
+                                </li>
+                                @endconfig
                                 @config('mac_oui.enabled')
                                 <li><a href="{{ route('tool.oui-lookup') }}"><i class="fa fa-magnifying-glass fa-fw fa-lg"
                                                                                               aria-hidden="true"></i> {{ __('tools.oui.title') }}</a>
