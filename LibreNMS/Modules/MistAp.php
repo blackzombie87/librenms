@@ -9,6 +9,9 @@ use App\Models\Mempool;
 use App\Models\Port;
 use App\Models\Processor;
 use App\Models\Sensor;
+use App\Models\SensorToStateIndex;
+use App\Models\StateIndex;
+use App\Models\StateTranslation;
 use App\Models\WirelessSensor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -529,17 +532,18 @@ class MistAp implements Module
             $channel = (int) $radio['channel'];
             $sensors->push((new LegacyWirelessSensor('channel', $device->device_id, [], 'mist', $indexPrefix . '_channel', "$label Channel", $channel))->toModel());
 
-            // Also expose channel as a generic state sensor so it is visible on the device overview page
+            // Also expose channel as a state sensor so it is visible on the device overview page.
+            // State sensors need a state_index and state_translations so the value is not "Unknown".
             $stateSensor = $device->sensors()
                 ->where('sensor_class', 'state')
-                ->where('sensor_type', 'mist')
+                ->whereIn('sensor_type', ['mist.wifi.channel', 'mist'])
                 ->where('sensor_index', $indexPrefix . '_channel')
                 ->first();
 
             if (! $stateSensor) {
                 $stateSensor = new Sensor;
                 $stateSensor->sensor_class = 'state';
-                $stateSensor->sensor_type = 'mist';
+                $stateSensor->sensor_type = 'mist.wifi.channel';
                 $stateSensor->sensor_index = $indexPrefix . '_channel';
                 $stateSensor->poller_type = 'api';
                 $stateSensor->sensor_oid = 'mist.radio.' . $indexPrefix . '.channel';
@@ -548,10 +552,36 @@ class MistAp implements Module
                 $stateSensor->sensor_multiplier = 1;
                 $stateSensor->rrd_type = 'GAUGE';
                 $device->sensors()->save($stateSensor);
+            } else {
+                $stateSensor->sensor_type = 'mist.wifi.channel';
+                $stateSensor->sensor_descr = $label . ' Channel';
             }
 
             $stateSensor->sensor_current = $channel;
             $stateSensor->save();
+
+            // Ensure state_index and translation exist so the value displays (not "Unknown")
+            $stateIndex = StateIndex::firstOrCreate(
+                ['state_name' => 'mist.wifi.channel'],
+                ['state_name' => 'mist.wifi.channel']
+            );
+
+            StateTranslation::firstOrCreate(
+                [
+                    'state_index_id' => $stateIndex->state_index_id,
+                    'state_value' => $channel,
+                ],
+                [
+                    'state_descr' => (string) $channel,
+                    'state_draw_graph' => 1,
+                    'state_generic_value' => 0, // Ok
+                ]
+            );
+
+            SensorToStateIndex::updateOrCreate(
+                ['sensor_id' => $stateSensor->sensor_id],
+                ['state_index_id' => $stateIndex->state_index_id]
+            );
         }
 
         // TX power (dBm)
