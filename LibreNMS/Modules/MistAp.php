@@ -566,17 +566,19 @@ class MistAp implements Module
                 ['state_name' => 'mist.wifi.channel']
             );
 
-            StateTranslation::firstOrCreate(
-                [
-                    'state_index_id' => $stateIndex->state_index_id,
-                    'state_value' => $channel,
-                ],
-                [
-                    'state_descr' => (string) $channel,
-                    'state_draw_graph' => 1,
-                    'state_generic_value' => 0, // Ok
-                ]
-            );
+            $translation = StateTranslation::where('state_index_id', $stateIndex->state_index_id)
+                ->where('state_value', $channel)
+                ->first();
+
+            if (! $translation) {
+                $translation = new StateTranslation;
+                $translation->state_index_id = $stateIndex->state_index_id;
+                $translation->state_value = $channel;
+                $translation->state_descr = (string) $channel;
+                $translation->state_draw_graph = 1;
+                $translation->state_generic_value = 0; // Ok
+                $translation->save();
+            }
 
             SensorToStateIndex::updateOrCreate(
                 ['sensor_id' => $stateSensor->sensor_id],
